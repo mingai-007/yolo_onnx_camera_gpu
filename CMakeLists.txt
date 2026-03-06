@@ -9,12 +9,18 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(OpenCV REQUIRED)
 if(NOT OpenCV_FOUND)
     message(FATAL_ERROR "OpenCV not found!")
+else()
+    message(STATUS "OpenCV found: ${OpenCV_VERSION}")
+    message(STATUS "OpenCV version: ${OpenCV_VERSION}")
 endif()
 
 # CUDA
 find_package(CUDAToolkit REQUIRED)
 if(NOT CUDAToolkit_FOUND)
     message(FATAL_ERROR "CUDA Toolkit not found!")
+else()
+    message(STATUS "CUDA Toolkit found: ${CUDAToolkit_VERSION}")
+    message(STATUS "CUDA version: ${CUDAToolkit_VERSION}")
 endif()
 
 
