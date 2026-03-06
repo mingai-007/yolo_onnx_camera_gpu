@@ -1,43 +1,164 @@
 #include "inference.h"
 #include <iostream>
+#include <fstream>
+#include <NvInfer.h>
+#include <NvOnnxParser.h>
 
-Inference::Inference(const std::string& modelPath) 
-    : env_(ORT_LOGGING_LEVEL_WARNING, "YOLO"),
-      allocator_() {  // 初始化 allocator
-    
-    // 配置 Session 选项
-    Ort::SessionOptions sessionOptions;     
-    sessionOptions.SetIntraOpNumThreads(1);     // 单算子内并行线程数
-    sessionOptions.SetInterOpNumThreads(1);     // 算子间并行线程数
-    sessionOptions.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);   // 启用所有图优化
-    
-    OrtCUDAProviderOptions cuda_options;                        
-    sessionOptions.AppendExecutionProvider_CUDA(cuda_options);    // 使用 CUDA 作为执行提供程序
-    
-    session_ = std::make_unique<Ort::Session>(env_, modelPath.c_str(), sessionOptions); 
-    std::cout << "Model loaded successfully!" << std::endl;
 
-    // 获取输入名称并使用智能指针管理其生命周期
-    auto inputNameAllocated = session_->GetInputNameAllocated(0, allocator_);   
-    size_t inputNameLen = strlen(inputNameAllocated.get()) + 1;
-    inputNamePtr_ = std::make_unique<char[]>(inputNameLen);
-    memcpy(inputNamePtr_.get(), inputNameAllocated.get(), inputNameLen);
-    inputNameStr_ = inputNamePtr_.get();  // 保存 string 供使用
+Logger gLogger;
+
+Inference::Inference(const std::string& modelPath) {
+    std::string enginePath = modelPath.substr(0, modelPath.find_last_of('.')) + ".engine";
     
-    // 获取输出名称
-    auto outputNameAllocated = session_->GetOutputNameAllocated(0, allocator_);
-    size_t outputNameLen = strlen(outputNameAllocated.get()) + 1;
-    outputNamePtr_ = std::make_unique<char[]>(outputNameLen);
-    memcpy(outputNamePtr_.get(), outputNameAllocated.get(), outputNameLen);
-    outputNameStr_ = outputNamePtr_.get();
+    std::cout << "Checking for engine file: " << enginePath << std::endl;
     
-    // 获取输出形状
-    auto outputTypeInfo = session_->GetOutputTypeInfo(0);
-    auto outputTensorInfo = outputTypeInfo.GetTensorTypeAndShapeInfo();
-    outputShape_ = outputTensorInfo.GetShape();
+    // Check if engine file exists
+    std::ifstream engineFile(enginePath, std::ios::binary);
+    if (engineFile) {
+        std::cout << "Engine file exists, loading..." << std::endl;
+        // Load existing engine
+        engineFile.seekg(0, std::ios::end);
+        size_t size = engineFile.tellg();
+        engineFile.seekg(0, std::ios::beg);
+        std::vector<char> engineData(size);
+        engineFile.read(engineData.data(), size);
+        engineFile.close();
+        
+        std::cout << "Creating TensorRT runtime..." << std::endl;
+        runtime_ = std::unique_ptr<nvinfer1::IRuntime>(nvinfer1::createInferRuntime(gLogger));
+        if (!runtime_) {
+            throw std::runtime_error("Failed to create TensorRT runtime");
+        }
+        
+        std::cout << "Deserializing engine..." << std::endl;
+        engine_ = std::unique_ptr<nvinfer1::ICudaEngine>(runtime_->deserializeCudaEngine(engineData.data(), size));
+        if (!engine_) {
+            throw std::runtime_error("Failed to deserialize CUDA engine from file");
+        }
+        
+        std::cout << "Loaded TensorRT engine from file: " << enginePath << std::endl;
+    } else {
+        std::cout << "Engine file not found, building from ONNX: " << modelPath << std::endl;
+        
+        std::cout << "Creating TensorRT builder..." << std::endl;
+        auto builder = std::unique_ptr<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(gLogger));
+        if (!builder) {
+            throw std::runtime_error("Failed to create TensorRT builder");
+        }
+        
+        std::cout << "Creating network..." << std::endl;
+        auto network = std::unique_ptr<nvinfer1::INetworkDefinition>(builder->createNetworkV2(0));
+        if (!network) {
+            throw std::runtime_error("Failed to create TensorRT network");
+        }
+        
+        std::cout << "Creating ONNX parser..." << std::endl;
+        // Create ONNX parser
+        auto parser = std::unique_ptr<nvonnxparser::IParser>(nvonnxparser::createParser(*network, gLogger));
+        if (!parser) {
+            throw std::runtime_error("Failed to create ONNX parser");
+        }
+        
+        std::cout << "Parsing ONNX model..." << std::endl;
+        // Parse ONNX model
+        if (!parser->parseFromFile(modelPath.c_str(), static_cast<int>(nvinfer1::ILogger::Severity::kWARNING))) {
+            throw std::runtime_error("Failed to parse ONNX model");
+        }
+        
+        std::cout << "Creating builder config..." << std::endl;
+        // Build engine
+        auto config = std::unique_ptr<nvinfer1::IBuilderConfig>(builder->createBuilderConfig());
+        if (!config) {
+            throw std::runtime_error("Failed to create builder config");
+        }
+        
+        
+        // Set max workspace size
+        config->setMemoryPoolLimit(nvinfer1::MemoryPoolType::kWORKSPACE, 6ULL << 30);// 1GB
+        
+        std::cout << "Building serialized network..." << std::endl;
+        // Build and serialize engine
+        auto plan = std::unique_ptr<nvinfer1::IHostMemory>(builder->buildSerializedNetwork(*network, *config));
+        if (!plan) {
+            throw std::runtime_error("Failed to build serialized network");
+        }
+        
+        std::cout << "Saving engine to file..." << std::endl;
+        // Save engine to file
+        std::ofstream outEngine(enginePath, std::ios::binary);
+        if (outEngine) {
+            outEngine.write(static_cast<const char*>(plan->data()), plan->size());
+            outEngine.close();
+            std::cout << "Saved TensorRT engine to file: " << enginePath << std::endl;
+        } else {
+            std::cerr << "Warning: Failed to save engine to file" << std::endl;
+        }
+        
+        std::cout << "Creating runtime..." << std::endl;
+        // Create runtime and engine
+        runtime_ = std::unique_ptr<nvinfer1::IRuntime>(nvinfer1::createInferRuntime(gLogger));
+        if (!runtime_) {
+            throw std::runtime_error("Failed to create TensorRT runtime");
+        }
+        
+        std::cout << "Deserializing engine..." << std::endl;
+        engine_ = std::unique_ptr<nvinfer1::ICudaEngine>(runtime_->deserializeCudaEngine(plan->data(), plan->size()));
+        if (!engine_) {
+            throw std::runtime_error("Failed to deserialize CUDA engine");
+        }
+    }
     
-    // std::cout << "Input name: " << inputNameStr_ << std::endl;
-    // std::cout << "Output name: " << outputNameStr_ << std::endl;
+    // Create execution context
+    context_ = std::unique_ptr<nvinfer1::IExecutionContext>(engine_->createExecutionContext());
+    if (!context_) {
+        throw std::runtime_error("Failed to create execution context");
+    }
+    
+    // 为输入输出分配显存，并记录相关信息
+    int nbIOTensors = engine_->getNbIOTensors();
+    buffers_.resize(nbIOTensors);
+    bufferSizes_.resize(nbIOTensors);
+
+    // 创建 CUDA 流
+    cudaError_t streamErr = cudaStreamCreate(&stream_);
+    if (streamErr != cudaSuccess) {
+        throw std::runtime_error("Failed to create CUDA stream: " + 
+                                std::string(cudaGetErrorString(streamErr)));
+    }
+    std::cout << "CUDA stream created successfully" << std::endl;
+
+    for (int i = 0; i < nbIOTensors; ++i) {
+        const char* tensorName = engine_->getIOTensorName(i);
+        auto dims = engine_->getTensorShape(tensorName);
+        
+        // 计算 tensor 大小
+        size_t size = 1;
+        for (int j = 0; j < dims.nbDims; ++j) {
+            size *= dims.d[j];
+        }
+        bufferSizes_[i] = size * sizeof(float);
+        
+        // 分配显存
+        cudaMalloc(&buffers_[i], bufferSizes_[i]);
+        
+        // 判断输入/输出
+        if (engine_->getTensorIOMode(tensorName) == nvinfer1::TensorIOMode::kINPUT) {
+            // 可选：记录输入 tensor name
+            inputTensorName_ = tensorName;
+            inputBufferIndex_ = i;  // 记录输入 buffer 索引
+        } else {
+            // 输出 tensor
+            outputShape_.clear();
+            for (int j = 0; j < dims.nbDims; ++j) {
+                outputShape_.push_back(dims.d[j]);
+            }
+            outputSize_ = size;
+            outputTensorName_ = tensorName;  // 记录输出 tensor name
+            outputBufferIndex_ = i;  // 记录输出 buffer 索引
+        }
+    }
+    
+    std::cout << "TensorRT engine built successfully!" << std::endl;
     std::cout << "Output shape: [";
     for (size_t i = 0; i < outputShape_.size(); ++i) {
         if (i > 0) std::cout << ", ";
@@ -46,64 +167,46 @@ Inference::Inference(const std::string& modelPath)
     std::cout << "]" << std::endl;
 }
 
+Inference::~Inference() {
+    if (stream_) {
+        cudaStreamDestroy(stream_);
+    }
+
+    for (auto& buffer : buffers_) {
+        if (buffer) {
+            cudaFree(buffer);
+        }
+    }
+}
+
 std::vector<float> Inference::run(const cv::Mat& inputBlob) {
 
-    // std::cout << "Running inference with input blob of shape: [";
-    // for (int d = 0; d < inputBlob.dims; ++d) {
-    //     std::cout << inputBlob.size[d];
-    //     if (d < inputBlob.dims - 1) std::cout << ", ";
-    // }
-    // std::cout << "]" << std::endl;
+    // Ensure input is continuous
+    cv::Mat continuousBlob = inputBlob.isContinuous() ? inputBlob : inputBlob.clone();
+    
+    // Copy input to GPU
+    context_->setTensorAddress(inputTensorName_.c_str(), buffers_[inputBufferIndex_]);
 
-    // 确保输入是连续的内存
-    cv::Mat continuousBlob;
-    if (!inputBlob.isContinuous()) {
-        continuousBlob = inputBlob.clone();
-    } else {
-        continuousBlob = inputBlob;
+    cudaError_t err = cudaMemcpy(buffers_[inputBufferIndex_], continuousBlob.data, 
+                                  bufferSizes_[inputBufferIndex_], cudaMemcpyHostToDevice);
+    if (err != cudaSuccess) {
+        throw std::runtime_error("Failed to copy input to device: " + 
+                                std::string(cudaGetErrorString(err)));
     }
-    
-    // 输入维度 [1, 3, H, W]
-    std::vector<int64_t> inputDims(4);
-    for (int d = 0; d < 4; ++d) {
-        inputDims[d] = static_cast<int64_t>(continuousBlob.size[d]);
+
+    context_->setTensorAddress(outputTensorName_.c_str(), buffers_[outputBufferIndex_]);
+    // Execute inference
+    if (!context_->enqueueV3(stream_)) {
+        throw std::runtime_error("Failed to execute inference");
     }
-    
-    // std::cout << "Input dimensions for ONNX Runtime: ["
-    //           << inputDims[0] << ", " << inputDims[1] << ", "
-    //           << inputDims[2] << ", " << inputDims[3] << "]" <<  std::endl;
-    
-    // 计算元素总数
-    size_t inputElementCount = continuousBlob.total();
-    
-    Ort::MemoryInfo memoryInfo = Ort::MemoryInfo::CreateCpu(
-        OrtArenaAllocator, OrtMemTypeDefault);  // 创建 CPU 内存信息对象
-    // 改用 CUDA 内存
-    // Ort::MemoryInfo memoryInfo("Cuda", OrtArenaAllocator, 0, OrtMemTypeDefault);
-    
-    Ort::Value inputTensor = Ort::Value::CreateTensor<float>(
-        memoryInfo,                                    // 内存信息
-        reinterpret_cast<float*>(continuousBlob.data), // 输入数据指针
-        inputElementCount,                             // 元素总数
-        inputDims.data(),                              // 输入维度数组指针
-        inputDims.size()                               // 输入维度数量
-    );
-    
-    // 准备输入输出名称（必须使用持久化的字符串指针）
-    const char* inputNames[] = {inputNameStr_.c_str()};
-    const char* outputNames[] = {outputNameStr_.c_str()};
-    
-    // 执行推理
-    auto outputTensors = session_->Run(
-        Ort::RunOptions{nullptr},       
-        inputNames, &inputTensor, 1,    // 输入：名称数组 + tensor 数组 + 数量
-        outputNames, 1                  // 输出：名称数组 + 期望输出数量
-    );
-    
-    // 提取输出数据
-    float* outputData = outputTensors[0].GetTensorMutableData<float>();
-    size_t outputSize = outputTensors[0].GetTensorTypeAndShapeInfo().GetElementCount();
-    
-    // 复制数据到 vector（因为 outputTensors 销毁后指针会失效）
-    return std::vector<float>(outputData, outputData + outputSize);
+    cudaStreamSynchronize(stream_);
+
+    // Copy output back to host
+    std::vector<float> output(outputSize_);
+    cudaError_t err2 = cudaMemcpy(output.data(), buffers_[outputBufferIndex_], 
+                                   bufferSizes_[outputBufferIndex_], cudaMemcpyDeviceToHost);
+    if (err2 != cudaSuccess) {
+        throw std::runtime_error("Failed to copy output to host");
+    }
+    return output;
 }

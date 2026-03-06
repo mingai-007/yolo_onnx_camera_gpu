@@ -6,13 +6,13 @@ PostProcessor::PostProcessor(float confThreshold, float nmsThreshold)
 
 std::vector<Detection> PostProcessor::process(float* output,
                                                const std::vector<int64_t>& shape,
-                                               float scaleX,
-                                               float scaleY,
+                                               float scale,
+                                               float padX,
+                                               float padY,
                                                int numClasses) {
-    // 适配 [1, 84, 8400] 格式 (YOLOv8/v9 标准输出)
     int numAnchors = static_cast<int>(shape[2]);
     
-    std::vector<cv::Rect2f> boxes;      // 保留浮点精度用于后续计算
+    std::vector<cv::Rect2f> boxes;    
     std::vector<float> scores;
     std::vector<int> classIds;
     
@@ -40,10 +40,14 @@ std::vector<Detection> PostProcessor::process(float* output,
             float h = output[3 * numAnchors + i];
             
             // 转换为左上角坐标 + 宽高，并缩放到原图尺寸
-            float left = (cx - w / 2.0f) * scaleX;
-            float top = (cy - h / 2.0f) * scaleY;
-            float width = w * scaleX;
-            float height = h * scaleY;
+            float left = ((cx - w / 2.0f) - padX) / scale;
+            float top = ((cy - h / 2.0f) - padY) / scale;
+            float width = w / scale;
+            float height = h / scale;
+
+            // 边界保护（避免负坐标）
+            left = std::max(0.0f, left);
+            top = std::max(0.0f, top);
             
             boxes.emplace_back(left, top, width, height);
             scores.push_back(maxScore);
@@ -52,7 +56,6 @@ std::vector<Detection> PostProcessor::process(float* output,
     }
     
     // NMS - OpenCV 只接受 cv::Rect (int) 或 cv::Rect2d (double)
-    std::vector<int> nmsIndices;
     
     // ✅ 关键修复：转换为整数矩形用于 NMS
     std::vector<cv::Rect> intBoxes;
@@ -67,6 +70,7 @@ std::vector<Detection> PostProcessor::process(float* output,
     }
     
     // 调用 OpenCV NMS
+    std::vector<int> nmsIndices;
     cv::dnn::NMSBoxes(intBoxes, scores, confThreshold_, nmsThreshold_, nmsIndices);
     
     // 构建最终结果（保留原始浮点框精度）

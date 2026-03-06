@@ -12,6 +12,7 @@ int main(int argc, char** argv) {
 
     try {
         // 配置模型
+        std::cout <<"begin config..."<<std::endl;
         ModelConfig config;
         config.modelPath = argv[1];
         config.confThreshold = 0.45f;
@@ -22,9 +23,11 @@ int main(int argc, char** argv) {
         Config::getInstance().getModelConfig() = config;    // 将模型配置保存到全局配置单例中
         
         // 创建检测器
+        std::cout <<"begin create detector..."<<std::endl;
         Detector detector(config);
         
         // 打开摄像头
+        std::cout <<"begin open camera..."<<std::endl;
         int cameraId = std::stoi(argv[2]);
         cv::VideoCapture cap(cameraId);
         if (!cap.isOpened()) {

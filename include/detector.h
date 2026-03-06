@@ -1,6 +1,7 @@
 #pragma once
 #include <memory>
 #include <vector>
+#include <string>
 #include "types.h"
 #include "preprocessor.h"
 #include "inference.h"

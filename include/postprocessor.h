@@ -7,9 +7,10 @@ public:
     PostProcessor(float confThreshold, float nmsThreshold);
     std::vector<Detection> process(float* output, 
                                    const std::vector<int64_t>& shape,
-                                   float scaleX, 
-                                   float scaleY,
-                                   int numClasses = 80);
+                                   float scale, 
+                                   float padX,
+                                   float padY,
+                                   int numClasses);
 
 private:
     float confThreshold_;   // 置信度阈值，只有大于这个值的检测结果才会被保留
