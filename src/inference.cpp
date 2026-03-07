@@ -75,7 +75,8 @@ Inference::Inference(const std::string& modelPath) {
         
         // Set max workspace size
         config->setMemoryPoolLimit(nvinfer1::MemoryPoolType::kWORKSPACE, 6ULL << 30);// 1GB
-        
+        // config->setPrecisions({nvinfer1::DataType::kHALF});
+        // config->setFlag(nvinfer1::BuilderFlag::kPREFER_PRECISION_CONSTRAINTS);
         std::cout << "Building serialized network..." << std::endl;
         // Build and serialize engine
         auto plan = std::unique_ptr<nvinfer1::IHostMemory>(builder->buildSerializedNetwork(*network, *config));

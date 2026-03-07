@@ -29,7 +29,11 @@ int main(int argc, char** argv) {
         // 打开摄像头
         std::cout <<"begin open camera..."<<std::endl;
         int cameraId = std::stoi(argv[2]);
-        cv::VideoCapture cap(cameraId);
+        cv::VideoCapture cap(cameraId, cv::CAP_V4L2); // 尝试打开摄像头
+        cap.set(cv::CAP_PROP_FRAME_WIDTH, 1280); // 设置宽度
+	    cap.set(cv::CAP_PROP_FRAME_HEIGHT, 720); // 设置高度
+	    cap.set(cv::CAP_PROP_FPS, 30); // 设置帧率
+	    cap.set(cv::CAP_PROP_FOURCC, cv::VideoWriter::fourcc('M','J','P','G'));	// 设置视频编码格式为MJPEG
         if (!cap.isOpened()) {
             std::cerr << "Failed to open camera or video: " << argv[2] << std::endl;
             return -1;
