@@ -1,8 +1,13 @@
 #include "detector.h"
 #include "config.h"
+#include "preprocessor_cuda.h"
 
 Detector::Detector(const ModelConfig& config) {
-    preProcessor_ = std::make_unique<PreProcessor>(
+
+    // preProcessor_ = std::make_unique<PreProcessor>(
+    //     config.inputWidth, config.inputHeight);
+
+    gpuPreProcessor_ = std::make_unique<GpuPreProcessor>(
         config.inputWidth, config.inputHeight);
     
     inference_ = std::make_unique<Inference>(config.modelPath);
@@ -21,17 +26,19 @@ std::vector<Detection> Detector::detect(const cv::Mat& image) {
 
     auto start_preProcessor = std::chrono::high_resolution_clock::now();
 
-    auto preprocessResult = preProcessor_->process(image);
-    const cv::Mat& blob = preprocessResult.blob;
+    // auto preprocessResult = preProcessor_->process(image);
+    auto preprocessResult = gpuPreProcessor_->process(image);
 
-    // std::cout << "Preprocessing completed. Blob shape: " << blob.size << std::endl;
+    // const cv::Mat& blob = preprocessResult.blob;
+
+    // std::cout << "Preprocessing completed. Blob shape: " << blob.size() << std::endl;
     auto end_preProcessor = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double, std::milli> elapsed_preProcessor = end_preProcessor - start_preProcessor;
     // std::cout << "Preprocessing time: " << elapsed_preProcessor.count() << " ms" << std::endl;
 
     auto start_inference = std::chrono::high_resolution_clock::now();
 
-    auto output = inference_->run(blob);
+    auto output = inference_->run(preprocessResult.blob);
 
     auto end_inference = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double, std::milli> elapsed_inference = end_inference - start_inference;
@@ -44,8 +51,8 @@ std::vector<Detection> Detector::detect(const cv::Mat& image) {
         output.data(),
         inference_->getOutputShape(),
         preprocessResult.scale,
-        preprocessResult.padX,
-        preprocessResult.padY,
+        preprocessResult.pad_x,
+        preprocessResult.pad_y,
         static_cast<int>(classes_.size())
     );
     

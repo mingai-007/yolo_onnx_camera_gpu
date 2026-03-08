@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
-project(yolo_onnx_cpp_camera_gpu)
+project(yolo_onnx_cpp_camera_gpu LANGUAGES CXX CUDA)
 
 # 设置 C++ 标准
 set(CMAKE_CXX_STANDARD 17)
@@ -51,10 +51,35 @@ endif()
 message(STATUS "TensorRT Include: ${TENSORRT_INCLUDE_PATH}")
 message(STATUS "TensorRT Lib: ${TENSORRT_LIB_DIR}")
 
+# NPP 库（NVIDIA Performance Primitives）
+find_library(NPPC_LIB NAMES nppc
+    PATHS /usr/lib/x86_64-linux-gnu /usr/local/cuda/lib64 ${CUDAToolkit_LIB_DIR})
+
+find_library(NPPIG_LIB NAMES nppig
+    PATHS /usr/lib/x86_64-linux-gnu /usr/local/cuda/lib64 ${CUDAToolkit_LIB_DIR})
+
+find_library(NPPIDEI_LIB NAMES nppidei
+    PATHS /usr/lib/x86_64-linux-gnu /usr/local/cuda/lib64 ${CUDAToolkit_LIB_DIR})
+
+# 验证核心库
+if(NOT NPPC_LIB)
+    message(FATAL_ERROR "libnppc not found!")
+endif()
+if(NOT NPPIG_LIB)
+    message(FATAL_ERROR "libnppig not found!")
+endif()
+if(NOT NPPIDEI_LIB)
+    message(FATAL_ERROR "libnppidei not found! _Ctx functions require this library.")
+endif()
+
+message(STATUS "NPPC: ${NPPC_LIB}")
+message(STATUS "NPPIG: ${NPPIG_LIB}")
+message(STATUS "NPPIDEI: ${NPPIDEI_LIB}")
 
 # 源文件
 set(SOURCES
-    src/preprocessor.cpp
+    # src/preprocessor.cpp
+    src/preprocessor_cuda.cu
     src/inference.cpp
     src/postprocessor.cpp
     src/visualizer.cpp
@@ -64,6 +89,12 @@ set(SOURCES
 
 # 创建可执行文件
 add_executable(yolo_infer ${SOURCES})
+
+# 设置 CUDA 文件属性
+set_source_files_properties(src/preprocessor_cuda.cu PROPERTIES 
+    LANGUAGE CUDA
+    COMPILE_OPTIONS "--expt-relaxed-constexpr"
+)
 
 target_include_directories(yolo_infer PRIVATE
     ${OpenCV_INCLUDE_DIRS}
@@ -77,13 +108,18 @@ target_link_libraries(yolo_infer PRIVATE
     ${TENSORRT_NVINFER_LIB}
     ${TENSORRT_NVONNXPARSER_LIB}
     CUDA::cudart
+    ${NPPC_LIB} 
+    ${NPPIG_LIB}
+    ${NPPIDEI_LIB}
 )
 
 set_target_properties(yolo_infer PROPERTIES
+    CUDA_ARCHITECTURES "89"  # 根据你的 GPU 架构调整
     BUILD_RPATH "${TENSORRT_LIB_DIR}"
     INSTALL_RPATH "${TENSORRT_LIB_DIR}"
     BUILD_WITH_INSTALL_RPATH TRUE
     INSTALL_RPATH_USE_LINK_PATH TRUE
+    CUDA_SEPARABLE_COMPILATION ON  # 启用 CUDA 可分离编译
 )
 
 # add_compile_options(-Wno-deprecated-declarations)

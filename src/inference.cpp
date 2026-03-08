@@ -180,34 +180,26 @@ Inference::~Inference() {
     }
 }
 
-std::vector<float> Inference::run(const cv::Mat& inputBlob) {
+std::vector<float> Inference::run(float* inputBlob_gpu) {
 
-    // Ensure input is continuous
-    cv::Mat continuousBlob = inputBlob.isContinuous() ? inputBlob : inputBlob.clone();
-    
-    // Copy input to GPU
-    context_->setTensorAddress(inputTensorName_.c_str(), buffers_[inputBufferIndex_]);
-
-    cudaError_t err = cudaMemcpy(buffers_[inputBufferIndex_], continuousBlob.data, 
-                                  bufferSizes_[inputBufferIndex_], cudaMemcpyHostToDevice);
-    if (err != cudaSuccess) {
-        throw std::runtime_error("Failed to copy input to device: " + 
-                                std::string(cudaGetErrorString(err)));
-    }
-
+    context_->setTensorAddress(inputTensorName_.c_str(), inputBlob_gpu);
     context_->setTensorAddress(outputTensorName_.c_str(), buffers_[outputBufferIndex_]);
+    
     // Execute inference
     if (!context_->enqueueV3(stream_)) {
         throw std::runtime_error("Failed to execute inference");
     }
+    
     cudaStreamSynchronize(stream_);
-
-    // Copy output back to host
+    
     std::vector<float> output(outputSize_);
-    cudaError_t err2 = cudaMemcpy(output.data(), buffers_[outputBufferIndex_], 
-                                   bufferSizes_[outputBufferIndex_], cudaMemcpyDeviceToHost);
-    if (err2 != cudaSuccess) {
-        throw std::runtime_error("Failed to copy output to host");
+
+    cudaError_t err = cudaMemcpy(output.data(), buffers_[outputBufferIndex_],
+                                 bufferSizes_[outputBufferIndex_], cudaMemcpyDeviceToHost);
+
+    if (err != cudaSuccess) {
+        throw std::runtime_error("Failed to copy output to host: " +
+                                 std::string(cudaGetErrorString(err)));
     }
     return output;
 }

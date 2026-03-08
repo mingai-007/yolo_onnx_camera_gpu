@@ -29,7 +29,8 @@ class Inference {
 public:
     explicit Inference(const std::string& modelPath);   // 构造函数，接受模型路径参数
     ~Inference();
-    std::vector<float> run(const cv::Mat& inputBlob);   // 运行推理，接受预处理后的图像并返回原始输出数据
+    // std::vector<float> run(const cv::Mat& inputBlob);   // 运行推理，接受预处理后的图像并返回原始输出数据
+    std::vector<float> run(float* inputBlob_gpu); // 重载 run 方法，接受 GPU 上的输入 blob
     std::vector<int64_t> getOutputShape() const { return outputShape_; } // 获取输出张量的形状
 
 private:

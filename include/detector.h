@@ -3,7 +3,8 @@
 #include <vector>
 #include <string>
 #include "types.h"
-#include "preprocessor.h"
+// #include "preprocessor.h"
+#include "preprocessor_cuda.h"
 #include "inference.h"
 #include "postprocessor.h"
 #include "visualizer.h"
@@ -15,7 +16,8 @@ public:
     void drawResults(cv::Mat& image, const std::vector<Detection>& detections);
 
 private:
-    std::unique_ptr<PreProcessor> preProcessor_;        // 预处理器
+    // std::unique_ptr<PreProcessor> preProcessor_;        // 预处理器
+    std::unique_ptr<GpuPreProcessor> gpuPreProcessor_;  // GPU 预处理器（可选）
     std::unique_ptr<Inference> inference_;              // 推理器
     std::unique_ptr<PostProcessor> postProcessor_;      // 后处理器
     std::unique_ptr<Visualizer> visualizer_;            // 可视化器
