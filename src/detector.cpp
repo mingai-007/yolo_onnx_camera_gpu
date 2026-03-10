@@ -18,17 +18,19 @@ Detector::Detector(const ModelConfig& config) {
 std::vector<Detection> Detector::detect(const cv::Mat& image) {
 
     // std::cout << "Starting detection on image of size: " << image.size << std::endl;
-    cv::Mat blob = preProcessor_->process(image);
-    // std::cout << "Preprocessing completed. Blob shape: " << blob.size << std::endl;
+    auto preprocessResult = preProcessor_->process(image);
+    // std::cout << "Preprocessing completed. Blob shape: " << preprocessResult.blob.size << std::endl;
 
-    auto output = inference_->run(blob);
+    auto output = inference_->run(preprocessResult.blob);
     // std::cout << "Inference completed. Output size: " << output.size() << std::endl;
 
     auto detections = postProcessor_->process(
         output.data(),
         inference_->getOutputShape(),
-        preProcessor_->getScaleX(),
-        preProcessor_->getScaleY()
+        preprocessResult.scale,
+        preprocessResult.padX,
+        preprocessResult.padY,
+        static_cast<int>(classes_.size())
     );
     
     return detections;

@@ -7,8 +7,9 @@ public:
     PostProcessor(float confThreshold, float nmsThreshold);
     std::vector<Detection> process(float* output, 
                                    const std::vector<int64_t>& shape,
-                                   float scaleX, 
-                                   float scaleY,
+                                   float scale, 
+                                   float padX,
+                                   float padY,
                                    int numClasses = 80);
 
 private:

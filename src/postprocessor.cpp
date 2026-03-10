@@ -6,8 +6,9 @@ PostProcessor::PostProcessor(float confThreshold, float nmsThreshold)
 
 std::vector<Detection> PostProcessor::process(float* output,
                                                const std::vector<int64_t>& shape,
-                                               float scaleX,
-                                               float scaleY,
+                                               float scale,
+                                               float padX,
+                                               float padY,
                                                int numClasses) {
     // 适配 [1, 84, 8400] 格式 (YOLOv8/v9 标准输出)
     int numAnchors = static_cast<int>(shape[2]);
@@ -40,10 +41,10 @@ std::vector<Detection> PostProcessor::process(float* output,
             float h = output[3 * numAnchors + i];
             
             // 转换为左上角坐标 + 宽高，并缩放到原图尺寸
-            float left = (cx - w / 2.0f) * scaleX;
-            float top = (cy - h / 2.0f) * scaleY;
-            float width = w * scaleX;
-            float height = h * scaleY;
+            float left = ((cx - w / 2.0f) - padX) / scale;
+            float top = ((cy - h / 2.0f) - padY) / scale;
+            float width = w / scale;
+            float height = h / scale;
             
             boxes.emplace_back(left, top, width, height);
             scores.push_back(maxScore);
