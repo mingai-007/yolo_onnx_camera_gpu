@@ -1,1 +1,3 @@
 # yolo_onnx_cpp_camera_gpu
+调用onnxruntime实时目标检测
+预处理在cpu
