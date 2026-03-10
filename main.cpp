@@ -50,6 +50,8 @@ int main(int argc, char** argv) {
         
         std::cout << "Starting real-time detection loop. Press 'q' to quit." << std::endl;
 
+        auto inference_start_time = std::chrono::high_resolution_clock::now();
+
         while (true)
         {
            cap>>frame;
@@ -64,22 +66,17 @@ int main(int argc, char** argv) {
 
             if (detector_manager.getResult(processed_frame, detections)) {
                 frameCount++;
-                // Calculate FPS based on display rate
-                double currentFps = 0.0;
-                auto now = std::chrono::high_resolution_clock::now();
-                std::chrono::duration<double> elapsed_since_last_display = now - last_display_time;
 
-                if (elapsed_since_last_display.count() > 0) {
-                    instantaneous_fps = 1000.0 / elapsed_since_last_display.count();
-                } else {
-                    instantaneous_fps = 0.0; // Avoid division by zero if somehow two frames arrive simultaneously
+                auto inference_end_time = std::chrono::high_resolution_clock::now();
+                std::chrono::duration<double> inference_duration = inference_end_time - inference_start_time;
+
+                if(inference_duration.count()>1.0){
+                    average_fps = frameCount / inference_duration.count();
+                    inference_start_time = inference_end_time;
+                    frameCount = 0;
                 }
-                last_display_time = now;
-
-                std::chrono::duration<double> total_elapsed = now - program_start_time;
-                average_fps = frameCount / total_elapsed.count();
-
-                std::string fpsText = cv::format("AVG FPS: %.1f | Inst FPS: %.1f | Objects: %zu", average_fps, instantaneous_fps, detections.size());
+                
+                std::string fpsText = cv::format("AVG FPS: %.1f | Objects: %zu", average_fps, detections.size());
                 cv::putText(processed_frame, fpsText, cv::Point(10, 30), cv::FONT_HERSHEY_SIMPLEX, 0.8, cv::Scalar(0, 255, 0), 2);
 
                 cv::imshow("Real-time Detection", processed_frame);
