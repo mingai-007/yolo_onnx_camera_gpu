@@ -43,7 +43,8 @@ int main(int argc, char** argv) {
 
         cv::Mat frame;
         int frameCount = 0;
-        double totalFps =0.0;
+        double avgfps =0.0;
+        auto start = std::chrono::high_resolution_clock::now();
         while (true)
         {
            cap>>frame;
@@ -52,20 +53,21 @@ int main(int argc, char** argv) {
                 break;
            }
         
-            auto start = std::chrono::high_resolution_clock::now();
             
             auto detections = detector.detect(frame);
             detector.drawResults(frame, detections);
-
+            frameCount++;
             auto end = std::chrono::high_resolution_clock::now();
             std::chrono::duration<double, std::milli> elapsed = end - start;
-            double currentFps = 1000.0 / elapsed.count();
-            totalFps = (frameCount * totalFps + currentFps) / (frameCount + 1);
-            frameCount++;
+            if(elapsed.count() > 1000.0) {
+                avgfps = frameCount * 1000.0 / elapsed.count();
+                start = end;
+                frameCount = 0;
+            }
 
             
 
-            std::string fpsText = cv::format("FPS: %.1f | Objects: %zu", currentFps, detections.size());
+            std::string fpsText = cv::format("FPS: %.1f | Objects: %zu", avgfps, detections.size());
             cv::putText(frame, fpsText, cv::Point(10, 30), cv::FONT_HERSHEY_SIMPLEX, 0.8, cv::Scalar(0, 255, 0), 2);
 
             cv::imshow("Real-time Detection", frame);
