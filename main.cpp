@@ -27,18 +27,24 @@ int main(int argc, char** argv) {
         Detector detector(config);
         
         // 打开摄像头
-        std::cout <<"begin open camera..."<<std::endl;
-        int cameraId = std::stoi(argv[2]);
-        cv::VideoCapture cap(cameraId, cv::CAP_V4L2); // 尝试打开摄像头
-        cap.set(cv::CAP_PROP_FRAME_WIDTH, 1280); // 设置宽度
-	    cap.set(cv::CAP_PROP_FRAME_HEIGHT, 720); // 设置高度
-	    cap.set(cv::CAP_PROP_FPS, 30); // 设置帧率
-	    cap.set(cv::CAP_PROP_FOURCC, cv::VideoWriter::fourcc('M','J','P','G'));	// 设置视频编码格式为MJPEG
-        if (!cap.isOpened()) {
-            std::cerr << "Failed to open camera or video: " << argv[2] << std::endl;
-            return -1;
+        std::cout <<"begin open camera/video..."<<std::endl;
+        std::string inputSource = argv[2];
+        cv::VideoCapture cap;
+        cap.open(inputSource);
+        if (cap.isOpened()){
+            std::cout << "Successfully opened video source: " << inputSource << std::endl;
         } else {
-            std::cout << "Camera/video opened successfully: " << argv[2] << std::endl;
+            int cameraId = std::stoi(inputSource);
+            cap.open(cameraId, cv::CAP_V4L2);
+            if(cap.isOpened()) {
+                std::cout << "Successfully opened camera with ID: " << cameraId << std::endl;
+                cap.set(cv::CAP_PROP_FRAME_WIDTH, 1280);
+                cap.set(cv::CAP_PROP_FRAME_HEIGHT, 720);
+                cap.set(cv::CAP_PROP_FPS, 30);
+                cap.set(cv::CAP_PROP_FOURCC, cv::VideoWriter::fourcc('M','J','P','G'));
+            } else {
+                throw std::runtime_error("Failed to open video source: " + inputSource);
+            }
         }
 
         cv::Mat frame;
@@ -52,8 +58,6 @@ int main(int argc, char** argv) {
                 std::cout<<"End of video stream or failed to capture frame."<<std::endl;
                 break;
            }
-        
-            
             auto detections = detector.detect(frame);
             detector.drawResults(frame, detections);
             frameCount++;
