@@ -5,6 +5,9 @@
 OpenCV version: 4.6.0  
 CUDA version: 12.0.140  
 
-| Model       | FPS   | GPU Usage (%) |
-|-------------|-------|---------------|
-| yolo11.onnx |   30  |    66-70      |
+|    Source   |     Size    | Model       | FPS   | GPU Usage (%) |
+|-------------|-------------|-------------|-------|---------------|
+|    Camera   |  1280*720   | yolo11.onnx |   30  |    66-70      |
+|   Video     |  1280*720   | yolo11.onnx |   34  |     79        |
+|   Video     |  1920*1080  | yolo11.onnx |   32  |     74        |
+|   Video     |  3840*2160  | yolo11.onnx |   23  |     56-60     |
